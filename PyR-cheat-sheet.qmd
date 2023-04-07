@@ -1,0 +1,452 @@
+---
+title: "pandas - dplyr equivalents"
+format: html
+toc: true
+execute: 
+  embed-resources: true
+editor: visual
+---
+
+This "cheat sheet" is for people who know pandas and want to learn the dplyr equivalent or vice versa.
+
+Thanks to [Martin Siklar](https://towardsdatascience.com/python-pandas-vs-r-dplyr-5b5081945ccb) for getting this started. I have and will continue to add to this.
+
+It takes too long to puzzle out how to do something in your non-dominant language, so I'm hoping we can crowd source the equivalents and save time learning.
+
+I am in the know-dplyr learning pandas group. If there is a common pandas task you are interested in knowing how to do with dplyr, please share the pandas code with me. If there is a better or another way to do a certain task in pandas, please share that code with me.
+
+Use the table of contents to jump to a task.
+
+This "cheat sheet" produced using the Quarto approach to mixing code and text. Quarto supports both python and R in the same document. I rendered it in Rstudo.
+
+```{r setup}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(reticulate)
+# https://rstudio.github.io/reticulate/articles/versions.html
+# https://cran.r-project.org/web/packages/reticulate/vignettes/python_packages.html
+use_python("c:/users/nabee/anaconda3/python.exe") # has pandas
+# use_condaenv(condaenv = "py4ds",
+#             conda = "C:/Users/nabee/anaconda3/condabin/conda")
+```
+
+```{python setup2}
+import numpy as np
+import pandas as pd
+from palmerpenguins import load_penguins
+```
+
+```{r}
+iris <- readr::read_csv(file = "data/iris.csv")
+glimpse(iris)
+
+mpg <- readr::read_csv(file = "data/mpg.csv")
+
+economics <- readr::read_csv(file = "data/economics.csv")
+
+cps_samples <- read_csv(file = "data/cps_samples.csv")
+```
+
+Bring `iris` from R and edit variable names.
+
+A big difference between Python and R is that Python methods often "modify in place" whereas R functions always "copy on modify". For that reason and for the purpose of this tutorial, at the end of Python code chunks that have modified `iris` dataframe the original `iris` dataframe is restored.
+
+```{r}
+# edit variable names to match what how they are in Python
+iris <- iris %>%
+  rename_with(.fn = ~ str_replace(.x, "\\.", "_")) %>% 
+  rename_with(.fn = ~ str_replace(.x, "W", "w")) %>% 
+  rename_with(.fn = ~ str_replace(.x, "L", "l"))
+
+glimpse(iris)  
+  
+```
+
+```{python}
+iris = r.iris
+mpg = r.mpg
+
+
+```
+
+# Selecting columns
+
+And here it already gets confusing. First of all, there are multiple ways on how to select columns from a dataframe in each framework. In pandas you can either simply pass a list with the column names or use the filter() method. This is confusing because the filter() function in dplyr is used to subset rows based on conditions and not columns! In dplyr we use the select() function instead:
+
+```{python}
+#Use Filter Function
+iris.filter(items=['Sepal_width', 'Petal_width'])
+
+#Use Filter Function
+iris.filter(items=['Sepal_width', 'Petal_width'])
+```
+
+```{r}
+#Pass columns as list
+iris %>% select(Sepal_width, Petal_width) %>% head()
+```
+
+Filter based on conditions Again, there are multiple ways on how to filter records in a dataframe based on conditions across one or multiple columns.
+
+pandas
+
+In pandas you can either use the indexing approach or try out the handy query API, which I personally prefer.
+
+```{python}
+#indexing
+iris[(iris["Sepal_width"] > 3.5) & (iris["Petal_width"] < 0.3)]
+#query API
+iris.query("Sepal_width > 3.5 & Petal_width < 0.3")
+```
+
+dplyr
+
+The standard way of filtering records in dplyr is via the filter function().
+
+```{r}
+iris %>% filter(Sepal_width > 3.5 & Petal_width < 0.3) %>% head()
+```
+
+# Renaming a single column
+
+Renaming sounds like an easy task, but be cautious and note the subtle difference here. If we want to rename our column from Species to Class in pandas we supply a dictionary that says {'Species': 'Class'} and in dplyr it is the exact opposite way Class=Species:
+
+pandas
+
+```{python}
+# {oldname : newname}
+iris.rename(columns = {'Species': 'Class'}, inplace = True)
+
+iris = r.iris # restore original
+```
+
+dplyr
+
+```{r}
+# newname = oldname
+iris %>% rename(Class=Species) %>% glimpse()
+```
+
+# Renaming multiple columns based on condition
+
+Let us say we want to rename multiple columns at once based on a condition. For example, convert all our feature columns (Sepal_length, Sepal_width, Petal_length, Petal_width) to upper case. In Python that's actually quite tricky and you need to first import another library and iterate manually over each column. In dplyr there is a much cleaner interface if you want to access/change multiple columns based on conditions.
+
+pandas
+
+```{python}
+import re # regular expressions
+#prepare pattern that columns have to match to be converted to upper case
+pattern = re.compile(r".*(length|width)")
+#iterate over columns and covert to upper case if pattern matches.
+for col in iris.columns:
+  if bool((pattern.match(col))):
+    iris.rename(columns = {col: col.upper()}, inplace = True)
+    
+iris.describe()
+
+iris = r.iris # restore original
+
+```
+
+dplyr
+
+```{r}
+iris %>% rename_with(toupper, matches("length|width")) %>% glimpse()
+```
+
+Note the upper case feature column names.
+
+Altering cell values based on conditions
+
+Let us say we want to recode/alter cell values based on conditions: In our example, we will try to recode the Species strings "setosa, versicolor and virginica" to integers from 0 to 2:
+
+pandas
+
+```{python, eval = F}
+# Error
+iris.loc[iris['Species'] == 'setosa', "Species"] = 0
+iris.loc[iris['Species'] == 'versicolor', "Species"] = 1
+iris.loc[iris['Species'] == 'virginica', "Species"] = 2
+
+```
+
+dplyr
+
+```{r}
+iris %>%
+  mutate(Species = case_when(Species == 'setosa' ~ 0,
+                             Species == 'versicolor' ~ 1,
+                             Species == 'virginica' ~ 2)) %>%
+  head()
+
+```
+
+# distinct values in a column
+
+Sometimes we want to see which values distinct/unique values we have in a column. Note how different the function call is in both frameworks: pandas uses the unique() method and dplyr() uses the distinct() function to get to the same result:
+
+pandas
+
+```{python}
+iris.Species.unique()
+#array(['setosa', 'versicolor', 'virginica'], dtype=object)
+
+```
+
+dplyr
+
+```{r}
+iris %>% select(Species) %>% distinct() %>% count(Species)
+```
+
+# count records by a categorical variable
+
+If you want to count how many entries the iris dataframe has in total or get a count for a certain group, you can do the following:
+
+pandas
+
+```{python}
+len(iris)
+```
+
+```{python}
+iris.value_counts('Species')
+```
+
+```{python}
+iris.groupby(['Species']).size()
+```
+
+dplyr
+
+```{r}
+iris %>% nrow()
+```
+
+```{r}
+iris %>% group_by(Species) %>% tally()
+```
+
+```{r}
+iris %>% count(Species)
+```
+
+# summarize / aggregate over entire column(s)
+
+If you want to create descriptive statistics for one or more columns in your data frame, you can do the following:
+
+pandas
+
+```{python}
+iris.agg(['mean', 'min'])
+```
+
+dplyr
+
+`mean()` and `min()` would produce an error if a non-numeric vector is passed to them, so the select_helper `where` is used to prevent that.
+
+```{r}
+iris %>% summarise(across(where(is.numeric), list(mean = mean, min = min)))
+```
+
+# summarize / aggregate by group
+
+If you want to have aggregate statistics for by group in your dataset, you have to use the groupby() method in pandas and the group_by() function in dplyr. You can either do this for all columns or for a specific column:
+
+pandas
+
+Note how pandas uses multilevel indexing for a clean display of the results:
+
+```{python}
+# aggregation by group for all columns
+iris.groupby(['Species']).agg(['mean', 'min'])
+```
+
+```{python}
+# aggregation by group for a specific column
+iris.groupby(['Species']).agg({'Sepal_length':['mean']})
+
+```
+
+Since dplyr doesn't support multilevel indexing, the output of the first call looks a little bit messy compared to pandas. The output column names have the form inputColName_aggFunction.
+
+```{r}
+# aggregation by group for all (numeric) columns
+iris %>% group_by(Species) %>% summarise(across(where(is.numeric), list(mean = mean, min = min)))
+```
+
+```{r}
+# aggregation by group for a specific column
+iris %>% group_by(Species) %>% summarise(mean=mean(Sepal_length))
+```
+
+# column math / adding a new column
+
+Sometimes you want to create a new column and combine the values of two or more existing columns with some mathematical operation. Here is how to do it in both pandas and dplyr:
+
+pandas
+
+```{r}
+iris["New_feature"] = iris["Petal_width"] * iris["Petal_length"] / 2
+```
+
+dplyr
+
+```{r}
+iris <- iris %>% mutate(New_feature= Petal_width * Petal_length/2)
+iris %>% head()
+
+```
+
+# deleting columns
+
+To clean up a dataframe, deleting columns can sometimes be quite handy:
+
+pandas
+
+In pandas you can delete a column with drop(). You can also use inplace=True to overwrite the current dataframe.
+
+```{python, eval = F}
+# ['New_feature'] not found in axis
+iris.drop("New_feature", axis=1, inplace=True)
+```
+
+dplyr
+
+In dplyr you specify the column name you want to remove inside the select() function with a leading minus.
+
+```{r}
+iris <- iris %>% select(-New_feature) 
+iris %>% head()
+```
+
+Sorting records by values
+
+To sort values you can use sort_values() in pandas and arrange() in dplyr. The default sorting for both is ascending. Note the difference in each function call on how to sort descending:
+
+pandas
+
+```{python}
+iris.sort_values('Petal_width', ascending=0)
+```
+
+dplyr
+
+```{r}
+iris %>% arrange(desc(Petal_width))
+```
+
+# changing order of columns
+
+I don't use this functionality often, but sometimes it comes in handy if I want to create a table for a presentation and the ordering of the columns doesn't make logical sense. Here is how to move around columns:
+
+pandas
+
+In Python pandas you need to reindex your columns by making use of a list. Let's say we want to move the column Species to the front.
+
+```{python}
+iris.reindex(['Species','Petal_length','Sepal_length','Sepal_width','Petal_Width'], axis=1)
+
+```
+
+dplyr
+
+In dplyr you can use the handy relocate() function. Again let's say we want to move the column Species to the front.
+
+```{r}
+iris %>% relocate(Species)
+```
+
+Note that you can use .before or .after to place a columne before or after another.
+
+```{r}
+iris %>% relocate(Species, .before=Sepal_width)
+```
+
+# slicing
+
+Slicing is a whole topic on its own and there is a lot of ways on how to do it. Let us step through the most frequently used slicing operation below:
+
+Slicing by row Sometimes you know the exact row number you want to extract. Although the procedure in dplyr and pandas is quite similar please note that Indexing in Python starts at 0 and in R at 1.
+
+pandas
+
+```{python}
+iris.iloc[[49,50]]
+```
+
+dplyr
+
+```{r}
+iris %>% slice(50, 51)
+```
+
+# Slicing first and last records (head / tail)
+
+Sometimes we want to see either the first or last records in a dataframe. This can be either done by providing a fixed number n or a proportion prop of values.
+
+pandas
+
+In pandas you can use the head() or tail() method to get a fixed amount of records. If you want to extraction a proportion, you have to do some math on your own:
+
+```{python}
+# returns 5 records
+iris.head(n=5)
+```
+
+```{python}
+# returns the last 10% of total records
+iris.tail(n = len(iris) // 10)
+```
+
+dplyr
+
+In dplyr there are two designated functions for this use case: slice_head() and slice_tail(). Please note how you can either specify a fixed number or a proportion:
+
+```{r}
+# returns first 5 records
+iris %>% slice_head(n=5)
+```
+
+```{r}
+# returns the last 10% of total records
+iris %>% slice_tail(prop=0.1)
+```
+
+# creating boolean vector/series
+
+Such vector/series are useful for subsetting a dataframe and creating "dummy" variables analysis
+
+Using inequalities
+
+```{python}
+# (iris.Petal_width > iris.Petal_width.median()).value_counts()
+
+iris["wide_petal"] = iris["Petal_width"] > iris["Petal_width"].median()
+
+iris["wide_petal"].value_counts()
+
+iris = r.iris
+```
+
+```{python}
+mpg["great_mpg"] = (mpg.cty) > 20 & (mpg.hwy > 25)
+mpg.head()
+
+mpg = r.mpg
+```
+
+```{r}
+mutate(iris, wide_petal = Petal_width > quantile(Petal_width, probs = 0.50)) %>% count(wide_petal)
+
+```
+
+Using regex on a string variable
+
+```{python}
+iris.Species.str.contains("^vir", regex = True).value_counts()
+```
+
+```{r}
+mutate(iris, is_vir = str_detect(Species, "^vir")) %>% count(is_vir)
+```
